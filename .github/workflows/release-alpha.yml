@@ -1,0 +1,97 @@
+name: Build and Release Alpha APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*-alpha'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+      
+      - name: Rename APK
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/debug/app-debug.apk release/locust-tv-alpha.apk
+      
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: locust-tv-alpha
+          path: release/locust-tv-alpha.apk
+      
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/locust-tv-alpha.apk
+          body: |
+            ## Locust TV Alpha Release
+            
+            **版本**: ${{ steps.version.outputs.version }}
+            **构建时间**: ${{ steps.version.outputs.date }}
+            
+            ### 更新内容
+            - 整合 my-tv 播放器与 iptv-org/iptv 自动更新机制
+            - 支持通过 jsDelivr CDN 加速访问全球直播源
+            - 智能回退机制，确保始终有内容可看
+            - 提供 Termux 定时更新脚本
+            
+            ### 安装说明
+            1. 下载 `locust-tv-alpha.apk`
+            2. 在 Android TV 上安装
+            3. (可选) 配置 Termux 自动更新脚本
+            
+            ### 配置自动更新
+            ```bash
+            bash <(curl -sL https://raw.githubusercontent.com/yanzhao77/locust-tv/main/scripts/setup_cron.sh)
+            ```
+            
+            ### 免责声明
+            本应用不托管任何视频内容，所有直播源均来自公开网络。仅供个人学习与研究使用。
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
