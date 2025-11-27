@@ -28,13 +28,24 @@ object ChannelLoader {
      * @param context Context
      * @return List<TV> 频道列表
      */
-    suspend fun loadChannels(context: Context): List<TV> {
+    suspend fun loadChannels(context: Context, useCache: Boolean = true): List<TV> {
         return withContext(Dispatchers.IO) {
+            // 1. 尝试从缓存加载
+            if (useCache) {
+                val cachedChannels = ChannelCache.loadChannels(context)
+                if (cachedChannels != null && cachedChannels.isNotEmpty()) {
+                    Log.i(TAG, "从缓存加载频道: ${cachedChannels.size} 个")
+                    return@withContext cachedChannels
+                }
+            }
+            
             try {
-                // 1. 尝试加载外部 M3U 文件
+                // 2. 尝试加载外部 M3U 文件
                 val externalChannels = loadExternalM3U()
                 if (externalChannels.isNotEmpty()) {
                     Log.i(TAG, "成功加载外部 M3U 文件: ${externalChannels.size} 个频道")
+                    // 保存到缓存
+                    ChannelCache.saveChannels(context, externalChannels, ChannelCache.SourceType.EXTERNAL_M3U, EXTERNAL_M3U_PATH)
                     return@withContext externalChannels
                 }
                 
@@ -43,10 +54,12 @@ object ChannelLoader {
                 Log.e(TAG, "加载外部 M3U 文件失败: ${e.message}", e)
             }
             
-            // 2. 回退到内置频道列表
+            // 3. 回退到内置频道列表
             try {
                 val builtinChannels = loadBuiltinChannels(context)
                 Log.i(TAG, "成功加载内置频道列表: ${builtinChannels.size} 个频道")
+                // 保存到缓存
+                ChannelCache.saveChannels(context, builtinChannels, ChannelCache.SourceType.BUILTIN)
                 return@withContext builtinChannels
             } catch (e: Exception) {
                 Log.e(TAG, "加载内置频道列表失败: ${e.message}", e)

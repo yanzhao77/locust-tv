@@ -12,6 +12,8 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import com.yanzhao77.locusttv.models.TVViewModel
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 
 class MainActivity : FragmentActivity(), Request.RequestListener {
@@ -36,6 +38,16 @@ class MainActivity : FragmentActivity(), Request.RequestListener {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
+
+        // 初始化 ChannelLoader 并加载频道
+        lifecycleScope.launch {
+            try {
+                val channels = ChannelLoader.loadChannels(this@MainActivity)
+                Log.i(TAG, "ChannelLoader 加载完成: ${channels.size} 个频道")
+            } catch (e: Exception) {
+                Log.e(TAG, "ChannelLoader 加载失败", e)
+            }
+        }
 
         Request.onCreate()
         Request.setRequestListener(this)

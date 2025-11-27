@@ -1,0 +1,117 @@
+name: Build and Release APK
+
+on:
+  push:
+    tags:
+      - 'v*-alpha'
+      - 'v*-beta'
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+      
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+      
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+      
+      - name: Rename APK
+        run: |
+          mkdir -p release
+          VERSION=${{ steps.version.outputs.version }}
+          cp app/build/outputs/apk/debug/app-debug.apk release/locust-tv-${VERSION}.apk
+      
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: locust-tv-apk
+          path: release/*.apk
+      
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*.apk
+          body: |
+            ## Locust TV ${{ steps.version.outputs.version }}
+            
+            **构建时间**: ${{ steps.version.outputs.date }}
+            
+            ### 更新内容
+            
+            #### ✨ 新功能
+            - 集成 ChannelLoader 自动加载机制
+            - 支持外部 M3U 文件动态加载
+            - 添加频道缓存功能（24小时有效期）
+            - 优化设置界面，显示数据源状态和缓存信息
+            
+            #### 🔧 技术改进
+            - 使用 jsDelivr CDN 加速访问 iptv-org/iptv
+            - 三层容错设计：缓存 → 外部 M3U → 内置频道
+            - 智能回退机制，确保始终有内容可看
+            - 支持 Termux 定时更新脚本
+            
+            ### 📦 安装说明
+            
+            1. 下载 `locust-tv-${{ steps.version.outputs.version }}.apk`
+            2. 在 Android TV 上安装
+            3. (可选) 配置 Termux 自动更新脚本
+            
+            ### 🚀 配置自动更新
+            
+            在 Android 设备上安装 [Termux](https://f-droid.org/packages/com.termux/)，然后执行：
+            
+            ```bash
+            bash <(curl -sL https://raw.githubusercontent.com/yanzhao77/locust-tv/main/scripts/setup_cron.sh)
+            ```
+            
+            该脚本会自动配置定时任务，每天凌晨 3:00 更新频道列表。
+            
+            ### ⚠️ 免责声明
+            
+            本应用不托管任何视频内容，所有直播源均来自公开网络。仅供个人学习与研究使用。
+            
+            ### 📞 反馈与支持
+            
+            - **问题反馈**: [GitHub Issues](https://github.com/yanzhao77/locust-tv/issues)
+            - **项目主页**: [GitHub Repository](https://github.com/yanzhao77/locust-tv)
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
